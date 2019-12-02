@@ -26,11 +26,11 @@ public:
 		memset(&mc_values_, 0, sizeof(mc_values));
 	}
 
-	void requestStats();
+	bool requestStats();
 
-	void setCurrent(float current);
+	bool setCurrent(float current);
 
-	void setCurrentBrake(float current);
+	bool setCurrentBrake(float current);
 
 	int update();
 
@@ -115,7 +115,7 @@ public:
 	mc_values mc_values_;
 
 private:
-	void sendRequest(const uint8_t* payload, int len);
+	bool sendRequest(const uint8_t* payload, int len);
 
 	int expected_msg_len() {
 		return rx_data_[0] == 2 ? rx_data_[1] : ( rx_data_[1] << 8 | rx_data_[2]);
@@ -131,6 +131,8 @@ private:
 	int32_t buffer_pos_ = 0;
 
 	uint8_t rx_data_[256];
+
+	uint8_t tx_data_[50];
 
 	uint16_t last_uart_data_time_ = 0;
 };

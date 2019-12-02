@@ -14,11 +14,7 @@
       <ProjectName>stm401</ProjectName>
       <ProjectNature>CPP</ProjectNature>
       <Secure/>
-      <filestoremove>
-        <file>
-          <name>Core\Src\tim.c</name>
-        </file>
-      </filestoremove>
+      <filestoremove/>
       <sourceEntriesToRemove>
         <sourceEntry/>
       </sourceEntriesToRemove>

@@ -2,24 +2,6 @@
 #include "crc.h"
 #include <string.h>
 
-
-void VescComm::sendRequest(const uint8_t* payload, int payload_len) {
-	uint16_t crc_payload = crc16(payload, payload_len);
-
-	if (payload_len <= 256) {
-		uint8_t header[] = {0x2, (uint8_t)payload_len};
-		serial_->Send(header, sizeof(header));
-	}
-	else {
-		uint8_t header[] = {0x3, (uint8_t)(payload_len >> 8), (uint8_t)payload_len};
-		serial_->Send(header, sizeof(header));
-	}
-
-	serial_->Send(payload, payload_len);
-	uint8_t footer[] = {(uint8_t)(crc_payload >> 8), (uint8_t)crc_payload, 0x3};
-	serial_->Send(footer, sizeof(footer));
-}
-
 void buffer_append_int32(uint8_t* buffer, int32_t number, int32_t *index) {
 	buffer[(*index)++] = number >> 24;
 	buffer[(*index)++] = number >> 16;
@@ -27,27 +9,54 @@ void buffer_append_int32(uint8_t* buffer, int32_t number, int32_t *index) {
 	buffer[(*index)++] = number;
 }
 
+void buffer_append_int16(uint8_t* buffer, uint16_t number, int32_t *index) {
+  buffer[(*index)++] = number >> 8;
+  buffer[(*index)++] = number;
+}
+
 void buffer_append_float32(uint8_t* buffer, float number, float scale, int32_t *index) {
     buffer_append_int32(buffer, (int32_t)(number * scale), index);
 }
 
-void VescComm::requestStats() {
-	uint8_t request[] = { (uint8_t)COMM_PACKET_ID::COMM_GET_VALUES};
-	sendRequest(request , sizeof(request));
+bool VescComm::sendRequest(const uint8_t* payload, int payload_len) {
+  int32_t idx = 0;
+  if (payload_len <= 256) {
+    tx_data_[idx++] = 0x2;
+    tx_data_[idx++] = (uint8_t)payload_len;
+  }
+  else {
+    tx_data_[idx++] = 0x3;
+    buffer_append_int16(tx_data_, payload_len, &idx);
+  }
+
+  memcpy(tx_data_ + idx, payload, payload_len);
+  idx += payload_len;
+
+  uint16_t crc_payload = crc16(payload, payload_len);
+  buffer_append_int16(tx_data_, crc_payload, &idx);
+  tx_data_[idx++] = 0x3;
+
+  return serial_->Send(tx_data_, idx);
 }
 
-void VescComm::setCurrent(float current) {
+
+bool VescComm::requestStats() {
+	uint8_t request[] = { (uint8_t)COMM_PACKET_ID::COMM_GET_VALUES};
+	return sendRequest(request , sizeof(request));
+}
+
+bool VescComm::setCurrent(float current) {
 	uint8_t request[] = { (uint8_t)COMM_PACKET_ID::COMM_SET_CURRENT, 0, 0, 0, 0};
 	int32_t send_index = 1;
 	buffer_append_float32(request, current, 1000.0, &send_index);
-	sendRequest(request , sizeof(request));
+	return sendRequest(request , sizeof(request));
 }
 
-void VescComm::setCurrentBrake(float current) {
+bool VescComm::setCurrentBrake(float current) {
 	uint8_t request[] = { (uint8_t)COMM_PACKET_ID::COMM_SET_CURRENT_BRAKE, 0, 0, 0, 0};
 	int32_t send_index = 1;
 	buffer_append_float32(request, current, 1000.0, &send_index);
-	sendRequest(request , sizeof(request));
+	return sendRequest(request , sizeof(request));
 }
 
 #define kMsgTimeoutMs 100u

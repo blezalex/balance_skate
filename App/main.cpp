@@ -72,6 +72,9 @@ float angles[2];
 
 char buff[100] = { 0 };
 
+Usart motor1_comm;
+Usart motor2_comm;
+
 void MainTask() {
   uint8_t lpfSettings = 2;
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_PWR_MGMT_1, MPU6050_CLOCK_PLL_ZGYRO);
@@ -95,8 +98,8 @@ void MainTask() {
 
   PidController balance_pid(&balance_pid_settings);
 
-  Usart motor1_comm(&huart1);
-  Usart motor2_comm(&huart2);
+  motor1_comm.Init(&huart1);
+  motor2_comm.Init(&huart2);
   VescComm vesc1(&motor1_comm);
   VescComm vesc2(&motor2_comm);
 
@@ -105,7 +108,7 @@ void MainTask() {
 
   for (;;) {
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    //osDelay(1);
+    osDelay(1);
 
 
     if (!i2c_read_reg_to_buf(MPU6050_ADDRESS, MPU6050_ACCEL_XOUT_H, raw_data,
