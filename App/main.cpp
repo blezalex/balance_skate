@@ -14,6 +14,7 @@
 #include "pid.h"
 #include "vesc/vesc.h"
 #include "lpf.h"
+#include "MedianFilter.h"
 
 #include <cstdio>
 
@@ -93,10 +94,17 @@ PidSettings yaw_pid_settings;
 float yaw_rc = 0.1;
 LPF yaw_lpf(&yaw_rc);
 
+MedianFilter fwd_med;
+MedianFilter yaw_med;
 
 void MainTask() {
   TIM11->CR1 |= TIM_CR1_CEN;
 
+  fwd_med.reset();
+  yaw_med.reset();
+
+  // Wait for gyro to boot
+  osDelay(100);
 
   uint8_t lpfSettings = 2;
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_PWR_MGMT_1, MPU6050_CLOCK_PLL_ZGYRO);
@@ -107,8 +115,6 @@ void MainTask() {
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_INT_PIN_CFG, 1 << 4);
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_INT_ENABLE, 1);
 
-
-  osDelay(100);
 
   float beta = 0.1;
   Madgwick mw(&beta);
@@ -161,8 +167,8 @@ void MainTask() {
     angles[1] = -mw.getPitch();
 
     const float balance_angle = angles[0];
-    const float balance_target = fwd_in_lpf.compute(scaleRxInput(rxVals[1]) * 10);
-    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(rxVals[0]) * 200);
+    const float balance_target = fwd_in_lpf.compute(scaleRxInput(fwd_med.compute(rxVals[1])) * 20);
+    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[0])) * 200);
 
 //    static uint16_t v = 0;
 //    if (v++ > 100) {
@@ -177,7 +183,7 @@ void MainTask() {
     if (fabs(balance_angle) < 40 && init_complete) {
       float out = balance_pid.compute(balance_target - balance_angle, -update.gyro[0] * MW_GYRO_SCALE);
 
-      out = constrain(out, -15, 15);
+      out = constrain(out, -25, 25);
 
       float yaw_out = yaw_pid.compute(yaw_lpf.compute(-update.gyro[2] * MW_GYRO_SCALE) - yaw_target);
 
@@ -194,5 +200,8 @@ void MainTask() {
 }
 
 EXTERNC void RcPinInterrupt() {
-  on_ppm_interrupt();
+  if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0)) {
+    on_ppm_interrupt();
+  }
+
 }

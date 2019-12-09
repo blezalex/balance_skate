@@ -11,15 +11,17 @@ void on_ppm_interrupt()
 {
   static uint16_t lastIntTime;
   static int8_t channelIdx;
+  static bool wait_blank = true;
 
   uint16_t currentTime = micros();
   uint16_t pulseDuration = currentTime - lastIntTime;
-  if (pulseDuration > MAX_CMD_LEN || pulseDuration < MIN_CMD_LEN)
-  {
+  if (pulseDuration > 5000) {
+    wait_blank = false;
     channelIdx = 0;
+  } else if (pulseDuration > MAX_CMD_LEN || pulseDuration < MIN_CMD_LEN) {
+    wait_blank = true;
   }
-  else
-  {
+  else if (!wait_blank) {
     if (channelIdx < NUMBER_RX_INPUT) // ignore inputs if more than channels declared
     {
       rxVals[channelIdx] = pulseDuration;
