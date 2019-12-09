@@ -11,6 +11,10 @@ inline uint32_t millis() {
 //#define max(a,b) ((a)>(b)?(a):(b))
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 
+inline uint16_t micros() {
+  return TIM11->CNT;
+}
+
 
 
 #endif

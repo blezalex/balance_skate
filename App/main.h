@@ -8,3 +8,5 @@
 #endif
 
 EXTERNC void MainTask();
+
+EXTERNC void RcPinInterrupt();

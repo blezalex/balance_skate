@@ -1,8 +1,8 @@
 /**
   ******************************************************************************
-  * File Name          : SYS.c
+  * File Name          : TIM.h
   * Description        : This file provides code for the configuration
-  *                      of the SYS instances.
+  *                      of the TIM instances.
   ******************************************************************************
   * @attention
   *
@@ -16,22 +16,43 @@
   *
   ******************************************************************************
   */
+/* Define to prevent recursive inclusion -------------------------------------*/
+#ifndef __tim_H
+#define __tim_H
+#ifdef __cplusplus
+ extern "C" {
+#endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "sys.h"
+#include "main.h"
 
-/* USER CODE BEGIN 0 */
+/* USER CODE BEGIN Includes */
 
-/* USER CODE END 0 */
+/* USER CODE END Includes */
 
-/* SYS init function */
-void MX_SYS_Init(void)
-{
+extern TIM_HandleTypeDef htim11;
 
+/* USER CODE BEGIN Private defines */
+
+/* USER CODE END Private defines */
+
+void MX_TIM11_Init(void);
+
+/* USER CODE BEGIN Prototypes */
+
+/* USER CODE END Prototypes */
+
+#ifdef __cplusplus
 }
+#endif
+#endif /*__ tim_H */
 
-/* USER CODE BEGIN 1 */
+/**
+  * @}
+  */
 
-/* USER CODE END 1 */
+/**
+  * @}
+  */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

@@ -24,6 +24,7 @@
 #include "crc.h"
 #include "dma.h"
 #include "i2c.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -99,6 +100,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART6_UART_Init();
   MX_DMA_Init();
+  MX_TIM11_Init();
   MX_CRC_Init();
   /* USER CODE BEGIN 2 */
 
