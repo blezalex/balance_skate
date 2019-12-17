@@ -2,31 +2,11 @@
 #define _PID_H
 
 #include "common.h"
-
-struct PidSettings
-{
-  PidSettings()
-  {
-  	PidSettings(0, 0, 0, 0);
-  }
-
-  PidSettings(float p, float d, float i, float maxI)
-  {
-    P = p;
-    D = d;
-    I = i;
-    MaxI = maxI;
-  }
-
-  float P;
-  float D;
-  float I;
-  float MaxI;
-};
+#include "proto/protocol.pb.h"
 
 class PidController {
 public:
-	PidController(PidSettings* params)
+	PidController(Config_PidConfig* params)
 	{
 		_params = params;
 	    reset();
@@ -39,10 +19,10 @@ public:
 
 	float compute(float error, float de)
 	{
-		float out = error * _params->P + de * _params->D + _sumI * _params->I;
+		float out = error * _params->p + de * _params->d + _sumI * _params->i;
 
 		_prevError = error;
-		_sumI = constrain(_sumI + error, -_params->MaxI, _params->MaxI);
+		_sumI = constrain(_sumI + error, -_params->max_i, _params->max_i);
 
 		return out;
 	}
@@ -54,7 +34,7 @@ public:
 	}
 
 public:
-	PidSettings *_params;
+	Config_PidConfig *_params;
 
 private:
 	float _prevError;

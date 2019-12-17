@@ -1,0 +1,90 @@
+syntax = "proto2";
+option java_package = "proto";
+
+// CMD format:
+// Byte 0: Fixed 0x1 protocol header/version
+// Byte 1: packet length 3-255 (inclues all transfered bytes: header, len,
+// msgId, msgBody and CRC16)
+// Byte 2: message id
+// Byte 3-n message body
+// Byte n-1 CRC16
+
+enum RequestId {
+  MSG_NONE = 0;
+  READ_CONFIG = 1;
+  WRITE_CONFIG = 2;
+  GET_STATS = 3;
+  CALLIBRATE_ACC = 4;
+  SAVE_CONFIG = 5;
+  GET_DEBUG_BUFFER = 6;
+}
+
+enum ReplyId {
+  NO_REPLY = 0;
+  GENERIC_OK = 1;
+  GENERIC_FAIL = 2;
+  STATS = 3;
+  CONFIG = 4;
+  CRC_MISMATCH = 5;
+  DEBUG_BUFFER = 6;
+}
+
+message Config {
+  message Callibration {
+    optional float x_offset = 4 [ default = 0 ];
+    optional float y_offset = 5 [ default = 0 ];
+    optional float z_offset = 6 [ default = 0 ];
+  }
+
+  optional Callibration callibration = 1;
+
+  message PidConfig {
+    required float p = 1 [ default = 1200 ];
+    required float d = 2 [ default = 0.65 ];
+    required float i = 3 [ default = 0.1 ];
+    required float max_i = 4 [ default = 3 ];
+  }
+
+  required PidConfig balance_pid = 2;
+  
+  required PidConfig yaw_pid = 3;
+
+
+  message BalancingConfig {
+    // min value is 1 = linear
+    required float balance_expo = 1 [ default = 0.15 ];
+
+    // MPU6050_LPF_256HZ 0, MPU6050_LPF_188HZ 1, MPU6050_LPF_98HZ 2,
+    // MPU6050_LPF_42HZ 3, MPU6050_LPF_20HZ 4, MPU6050_LPF_10HZ 5,
+    // MPU6050_LPF_5HZ  6 Reboot required to change
+    required uint32 global_gyro_lpf = 2 [ default = 2 ];
+
+    required float imu_beta = 3 [ default = 0.02 ];
+    
+    required int32 max_control_angle = 4 [ default = 30 ];
+    required int32 max_rotation_rate = 5 [ default = 360 ];
+
+    required int32 max_current = 6 [ default = 25 ];
+
+    required float rc_lpf = 7 [ default = 0.007 ];
+  }
+
+  required BalancingConfig balance_settings = 4;
+}
+
+message Stats {
+  required float batt_voltage = 1;
+  required float batt_current = 2;
+  required float motor_current = 3;
+  required float speed = 5;
+  required float distance_traveled = 6;
+  required float drive_angle = 7;
+  required float stear_angle = 8;
+
+  required uint32 pad_pressure1 = 9;
+  required uint32 pad_pressure2 = 10;
+
+  required float motor_duty = 11;
+  required float esc_temp = 12;
+  required float motor_temp = 13;
+}

@@ -15,6 +15,11 @@
 #include "vesc/vesc.h"
 #include "lpf.h"
 #include "MedianFilter.h"
+#include "crc.h"
+
+#include "communicator.h"
+#include "proto/protocol.pb.h"
+#include "settings/settings.h"
 
 #include <cstdio>
 
@@ -78,18 +83,14 @@ char buff[100] = { 0 };
 Usart motor1_comm;
 Usart motor2_comm;
 
+Usart config_comm;
+
 #define MID 1520
 
 float scaleRxInput(int16_t input) {
   return constrain((input - MID) / 400.0, -1, 1);
 }
 
-float rc = 0.001;
-LPF fwd_in_lpf(&rc);
-LPF yaw_in_lpf(&rc);
-
-PidSettings balance_pid_settings;
-PidSettings yaw_pid_settings;
 
 float yaw_rc = 0.1;
 LPF yaw_lpf(&yaw_rc);
@@ -97,8 +98,80 @@ LPF yaw_lpf(&yaw_rc);
 MedianFilter fwd_med;
 MedianFilter yaw_med;
 
+uint8_t scratch[256];
+
+Communicator comms;
+
+Config cfg;
+
+LPF fwd_in_lpf(&cfg.balance_settings.rc_lpf);
+LPF yaw_in_lpf(&cfg.balance_settings.rc_lpf);
+
+void CommsTask() {
+  config_comm.Init(&huart6);
+  comms.Init(&config_comm);
+  while (true) {
+    uint8_t comms_msg = comms.update();
+    switch (comms_msg) {
+     case RequestId_READ_CONFIG: {
+       int16_t data_len = saveProtoToBuffer(scratch, sizeof(scratch),
+                                            Config_fields, &cfg);
+       if (data_len > 0) {
+         comms.SendMsg(ReplyId_CONFIG, scratch, data_len);
+       } else {
+         comms.SendMsg(ReplyId_GENERIC_FAIL);
+       }
+       break;
+     }
+
+     case RequestId_GET_DEBUG_BUFFER: {
+       break;
+     }
+
+     case RequestId_WRITE_CONFIG: {
+       bool good =
+           readSettingsFromBuffer(&cfg, comms.data(), comms.data_len());
+       if (good)
+         comms.SendMsg(ReplyId_GENERIC_OK);
+       else
+         comms.SendMsg(ReplyId_GENERIC_FAIL);
+       break;
+     }
+
+     case RequestId_GET_STATS: {
+       Stats stats = Stats_init_default;
+
+       int16_t data_len =
+           saveProtoToBuffer(scratch, sizeof(scratch), Stats_fields, &stats);
+       if (data_len != -1) {
+         comms.SendMsg(ReplyId_STATS, scratch, data_len);
+       } else {
+         comms.SendMsg(ReplyId_GENERIC_FAIL);
+       }
+       break;
+     }
+
+     case RequestId_CALLIBRATE_ACC:
+       comms.SendMsg(ReplyId_GENERIC_OK);
+       break;
+
+     case RequestId_SAVE_CONFIG:
+       saveSettingsToFlash(cfg);
+       comms.SendMsg(ReplyId_GENERIC_OK);
+       break;
+    }
+
+    osDelay(2);
+  }
+}
+
 void MainTask() {
   TIM11->CR1 |= TIM_CR1_CEN;
+
+  cfg = Config_init_default;
+  if (!readSettingsFromFlash(&cfg)) {
+    cfg = Config_init_default;
+  }
 
   fwd_med.reset();
   yaw_med.reset();
@@ -106,40 +179,37 @@ void MainTask() {
   // Wait for gyro to boot
   osDelay(100);
 
-  uint8_t lpfSettings = 2;
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_PWR_MGMT_1, MPU6050_CLOCK_PLL_ZGYRO);
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_SMPLRT_DIV, 0);
-  i2c_writeReg(MPU6050_ADDRESS, MPU6050_CONFIG, lpfSettings);
+  i2c_writeReg(MPU6050_ADDRESS, MPU6050_CONFIG, cfg.balance_settings.global_gyro_lpf);
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_GYRO_CONFIG, MPU6050_GYRO_FS_500);
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_ACCEL_CONFIG, MPU6050_ACCEL_FS_4);
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_INT_PIN_CFG, 1 << 4);
   i2c_writeReg(MPU6050_ADDRESS, MPU6050_INT_ENABLE, 1);
 
 
-  float beta = 0.1;
-  Madgwick mw(&beta);
+  Madgwick mw(&cfg.balance_settings.imu_beta);
 
+//  balance_pid_settings.P = 10;
+//  balance_pid_settings.D = 0.11;
+//  balance_pid_settings.I = 0.0005;
+//  balance_pid_settings.MaxI = 2000;
 
-  balance_pid_settings.P = 9;
-  balance_pid_settings.D = 0.10;
-  balance_pid_settings.I = 0;// 0.0005;
+  PidController balance_pid(&cfg.balance_pid);
 
-  PidController balance_pid(&balance_pid_settings);
-
-  yaw_pid_settings.P = 0.05;
-  yaw_pid_settings.D = 0.0;
-  yaw_pid_settings.I = 0;// 0.0005;
-  PidController yaw_pid(&yaw_pid_settings);
+//  yaw_pid_settings.P = 0.05;
+//  yaw_pid_settings.D = 0.0;
+//  yaw_pid_settings.I = 0;
+  PidController yaw_pid(&cfg.yaw_pid);
 
   motor1_comm.Init(&huart1);
   motor2_comm.Init(&huart2);
+
   VescComm vesc1(&motor1_comm);
   VescComm vesc2(&motor2_comm);
 
   bool init_complete = false;
   uint8_t raw_data[14] = { 0 };
-
-  rc = 0.008;
 
 
   for (;;) {
@@ -167,23 +237,14 @@ void MainTask() {
     angles[1] = -mw.getPitch();
 
     const float balance_angle = angles[0];
-    const float balance_target = fwd_in_lpf.compute(scaleRxInput(fwd_med.compute(rxVals[1])) * 20);
-    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[0])) * 200);
-
-//    static uint16_t v = 0;
-//    if (v++ > 100) {
-//      sprintf(buff, "%d\t%d\n", (int16_t)angles[0], (int16_t) angles[1] );
-//      motor1_comm.Send(buff, strlen(buff));
-//      v = 0;
-//    }
-
-
+    const float balance_target = fwd_in_lpf.compute(scaleRxInput(fwd_med.compute(rxVals[1])) * cfg.balance_settings.max_control_angle);
+    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[0])) * cfg.balance_settings.max_rotation_rate);
 
     init_complete = init_complete || millis() > 2000;
-    if (fabs(balance_angle) < 40 && init_complete) {
+    if (fabs(balance_angle) < 45 && init_complete) {
       float out = balance_pid.compute(balance_target - balance_angle, -update.gyro[0] * MW_GYRO_SCALE);
 
-      out = constrain(out, -25, 25);
+      out = constrain(out, -cfg.balance_settings.max_current, cfg.balance_settings.max_current);
 
       float yaw_out = yaw_pid.compute(yaw_lpf.compute(-update.gyro[2] * MW_GYRO_SCALE) - yaw_target);
 

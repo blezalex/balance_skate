@@ -9,4 +9,6 @@
 
 EXTERNC void MainTask();
 
+EXTERNC void CommsTask();
+
 EXTERNC void RcPinInterrupt();

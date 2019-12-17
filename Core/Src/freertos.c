@@ -59,6 +59,7 @@ int global_var = 0;
 MpuUpdate update;
 /* USER CODE END Variables */
 osThreadId_t defaultTaskHandle;
+osThreadId_t commsHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -104,6 +105,7 @@ void handleRawData(MpuUpdate* update, uint8_t* rawData) {
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
+void StartTask02(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -150,10 +152,18 @@ osKernelInitialize();
   /* definition and creation of defaultTask */
   const osThreadAttr_t defaultTask_attributes = {
     .name = "defaultTask",
-    .priority = (osPriority_t) osPriorityNormal,
-    .stack_size = 256
+    .priority = (osPriority_t) osPriorityRealtime,
+    .stack_size = 2048
   };
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* definition and creation of comms */
+  const osThreadAttr_t comms_attributes = {
+    .name = "comms",
+    .priority = (osPriority_t) osPriorityLow,
+    .stack_size = 2048
+  };
+  commsHandle = osThreadNew(StartTask02, NULL, &comms_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -172,6 +182,7 @@ void StartDefaultTask(void *argument)
 {
     
     
+    
 
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
@@ -179,6 +190,21 @@ void StartDefaultTask(void *argument)
 	MainTask();
 
   /* USER CODE END StartDefaultTask */
+}
+
+/* USER CODE BEGIN Header_StartTask02 */
+/**
+* @brief Function implementing the comms thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTask02 */
+void StartTask02(void *argument)
+{
+  /* USER CODE BEGIN StartTask02 */
+  /* Infinite loop */
+  CommsTask();
+  /* USER CODE END StartTask02 */
 }
 
 /* Private application code --------------------------------------------------*/
