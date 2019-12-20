@@ -58,8 +58,13 @@ typedef struct MpuUpdates {
 int global_var = 0;
 MpuUpdate update;
 /* USER CODE END Variables */
+typedef StaticTask_t osStaticThreadDef_t;
 osThreadId_t defaultTaskHandle;
+uint32_t defaultTaskBuffer[ 2048 ];
+osStaticThreadDef_t defaultTaskControlBlock;
 osThreadId_t commsHandle;
+uint32_t commsBuffer[ 2048 ];
+osStaticThreadDef_t commsControlBlock;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -152,16 +157,22 @@ osKernelInitialize();
   /* definition and creation of defaultTask */
   const osThreadAttr_t defaultTask_attributes = {
     .name = "defaultTask",
+    .stack_mem = &defaultTaskBuffer[0],
+    .stack_size = sizeof(defaultTaskBuffer),
+    .cb_mem = &defaultTaskControlBlock,
+    .cb_size = sizeof(defaultTaskControlBlock),
     .priority = (osPriority_t) osPriorityRealtime,
-    .stack_size = 2048
   };
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* definition and creation of comms */
   const osThreadAttr_t comms_attributes = {
     .name = "comms",
+    .stack_mem = &commsBuffer[0],
+    .stack_size = sizeof(commsBuffer),
+    .cb_mem = &commsControlBlock,
+    .cb_size = sizeof(commsControlBlock),
     .priority = (osPriority_t) osPriorityLow,
-    .stack_size = 2048
   };
   commsHandle = osThreadNew(StartTask02, NULL, &comms_attributes);
 

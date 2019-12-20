@@ -190,8 +190,8 @@ void MainTask() {
 
   Madgwick mw(&cfg.balance_settings.imu_beta);
 
-//  balance_pid_settings.P = 10;
-//  balance_pid_settings.D = 0.11;
+//  balance_pid_settings.P = 8;
+//  balance_pid_settings.D = 0.3;
 //  balance_pid_settings.I = 0.0005;
 //  balance_pid_settings.MaxI = 2000;
 
@@ -211,7 +211,7 @@ void MainTask() {
   bool init_complete = false;
   uint8_t raw_data[14] = { 0 };
 
-
+  static bool running = false;
   for (;;) {
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
     osDelay(1);
@@ -238,10 +238,19 @@ void MainTask() {
 
     const float balance_angle = angles[0];
     const float balance_target = fwd_in_lpf.compute(scaleRxInput(fwd_med.compute(rxVals[1])) * cfg.balance_settings.max_control_angle);
-    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[0])) * cfg.balance_settings.max_rotation_rate);
+    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[3])) * cfg.balance_settings.max_rotation_rate);
 
     init_complete = init_complete || millis() > 2000;
-    if (fabs(balance_angle) < 45 && init_complete) {
+    if (running) {
+      if (fabs(balance_angle) > 65)
+        running = false;
+    }
+    else {
+      if (fabs(balance_angle) < 5 && init_complete) {
+        running = true;
+      }
+    }
+    if (running) {
       float out = balance_pid.compute(balance_target - balance_angle, -update.gyro[0] * MW_GYRO_SCALE);
 
       out = constrain(out, -cfg.balance_settings.max_current, cfg.balance_settings.max_current);
