@@ -44,15 +44,15 @@ bool saveSettingsToFlash(const Config &config) {
     return false;
   }
 
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-                          (uint32_t) CONFIG_FLASH_PAGE_ADDR, size);
+  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR | FLASH_FLAG_PGAERR | FLASH_FLAG_PGSERR );
+  FLASH_Erase_Sector(5, VOLTAGE_RANGE_3);
 
   if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                         (uint32_t) CONFIG_FLASH_PAGE_ADDR, size)) {
     return false;
   }
-  int size_round_up = (size + 3) / 4 * 4;
-  for (int i = 0; i < size_round_up / 4; i++) {
+  int size_round_up = (size + 3) / 4;
+  for (int i = 0; i < size_round_up; i++) {
     // +4 for size block
     if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                           (uint32_t) CONFIG_FLASH_PAGE_ADDR + i * 4 + 4,
