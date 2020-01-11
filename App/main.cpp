@@ -10,6 +10,7 @@
 
 #include "../App/mpu.h"
 #include "imu/MadgwickAHRS.hpp"
+#include "imu/utils.h"
 
 #include "pid.h"
 #include "vesc/vesc.h"
@@ -33,7 +34,7 @@ typedef struct MpuUpdates {
   int16_t acc[3];
 } MpuUpdate;
 
-MpuUpdate update;
+
 
 void i2c_writeReg(uint8_t hwAddr, uint8_t wAddr, uint8_t value) {
   HAL_I2C_Mem_Write(&hi2c1, hwAddr << 1, wAddr, I2C_MEMADD_SIZE_8BIT, &value, 1,
@@ -107,6 +108,16 @@ Config cfg;
 LPF fwd_in_lpf(&cfg.balance_settings.rc_lpf);
 LPF yaw_in_lpf(&cfg.balance_settings.rc_lpf);
 
+float imu_rotation[3][3];
+
+float to_rad(float degs) {
+  return degs * M_PI / 180;
+}
+
+void update_imu_rotation() {
+  ComputeRotationMatrix(imu_rotation, to_rad(cfg.callibration.x_offset), to_rad(cfg.callibration.y_offset), to_rad(cfg.callibration.z_offset));
+}
+
 void CommsTask() {
   config_comm.Init(&huart6);
   comms.Init(&config_comm);
@@ -131,6 +142,7 @@ void CommsTask() {
      case RequestId_WRITE_CONFIG: {
        bool good =
            readSettingsFromBuffer(&cfg, comms.data(), comms.data_len());
+       update_imu_rotation();
        if (good)
          comms.SendMsg(ReplyId_GENERIC_OK);
        else
@@ -140,6 +152,8 @@ void CommsTask() {
 
      case RequestId_GET_STATS: {
        Stats stats = Stats_init_default;
+       stats.drive_angle = angles[0];
+       stats.stear_angle = angles[1];
 
        int16_t data_len =
            saveProtoToBuffer(scratch, sizeof(scratch), Stats_fields, &stats);
@@ -165,6 +179,8 @@ void CommsTask() {
   }
 }
 
+
+
 void MainTask() {
   TIM11->CR1 |= TIM_CR1_CEN;
 
@@ -172,6 +188,8 @@ void MainTask() {
   if (!readSettingsFromFlash(&cfg)) {
     cfg = Config_init_default;
   }
+
+
 
   fwd_med.reset();
   yaw_med.reset();
@@ -225,12 +243,27 @@ void MainTask() {
       }
     }
 
-    //MpuUpdate update;
-    handleRawData(&update, raw_data);
 
-    mw.updateIMU(update.gyro[0] * MW_GYRO_SCALE, update.gyro[1] * MW_GYRO_SCALE,
-                 update.gyro[2] * MW_GYRO_SCALE, update.acc[0] / (float) ACC_1G,
-                 update.acc[1] / (float) ACC_1G, update.acc[2] / (float) ACC_1G,
+
+    float gyro[3];
+    float acc[3];
+    {
+      MpuUpdate update;
+      handleRawData(&update, raw_data);
+      gyro[0] = update.gyro[0];
+      gyro[1] = update.gyro[1];
+      gyro[2] = update.gyro[2];
+
+      acc[0] = update.acc[0];
+      acc[1] = update.acc[1];
+      acc[2] = update.acc[2];
+      RotateVectorUsingMatrix(gyro, imu_rotation);
+      RotateVectorUsingMatrix(acc, imu_rotation);
+    }
+
+    mw.updateIMU(gyro[0] * MW_GYRO_SCALE, gyro[1] * MW_GYRO_SCALE,
+                 gyro[2] * MW_GYRO_SCALE, acc[0] / (float) ACC_1G,
+                 acc[1] / (float) ACC_1G, acc[2] / (float) ACC_1G,
                  !init_complete);
 
     angles[0] = mw.getRoll();
@@ -251,11 +284,11 @@ void MainTask() {
       }
     }
     if (running) {
-      float out = balance_pid.compute(balance_target - balance_angle, -update.gyro[0] * MW_GYRO_SCALE);
+      float out = balance_pid.compute(balance_target - balance_angle, -gyro[0] * MW_GYRO_SCALE);
 
       out = constrain(out, -cfg.balance_settings.max_current, cfg.balance_settings.max_current);
 
-      float yaw_out = yaw_pid.compute(yaw_lpf.compute(-update.gyro[2] * MW_GYRO_SCALE) - yaw_target);
+      float yaw_out = yaw_pid.compute(yaw_lpf.compute(-gyro[2] * MW_GYRO_SCALE) - yaw_target);
 
       vesc1.setCurrent(out + yaw_out);
       vesc2.setCurrent(out - yaw_out);
