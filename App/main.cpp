@@ -189,7 +189,11 @@ void MainTask() {
     cfg = Config_init_default;
   }
 
+  if (!cfg.balance_settings.has_stop_balance_angle) {
+    cfg.balance_settings.stop_balance_angle = 10;
+  }
 
+  update_imu_rotation();
 
   fwd_med.reset();
   yaw_med.reset();
@@ -275,7 +279,7 @@ void MainTask() {
 
     init_complete = init_complete || millis() > 2000;
     if (running) {
-      if (fabs(balance_angle) > 65)
+      if (fabs(balance_angle) > cfg.balance_settings.stop_balance_angle)
         running = false;
     }
     else {

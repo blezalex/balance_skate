@@ -63,10 +63,12 @@ message Config {
     
     required int32 max_control_angle = 4 [ default = 30 ];
     required int32 max_rotation_rate = 5 [ default = 360 ];
-
+    
     required int32 max_current = 6 [ default = 25 ];
 
     required float rc_lpf = 7 [ default = 0.007 ];
+    
+    optional int32 stop_balance_angle = 8 [ default = 10 ]; 
   }
 
   required BalancingConfig balance_settings = 4;
