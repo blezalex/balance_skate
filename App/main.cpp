@@ -84,6 +84,9 @@ char buff[100] = { 0 };
 Usart motor1_comm;
 Usart motor2_comm;
 
+VescComm vesc1(&motor1_comm);
+VescComm vesc2(&motor2_comm);
+
 Usart config_comm;
 
 #define MID 1520
@@ -107,6 +110,10 @@ Config cfg;
 
 LPF fwd_in_lpf(&cfg.balance_settings.rc_lpf);
 LPF yaw_in_lpf(&cfg.balance_settings.rc_lpf);
+
+float erpm_rc = 0.1;
+LPF erpm_lpf1(&erpm_rc);
+LPF erpm_lpf2(&erpm_rc);
 
 float imu_rotation[3][3];
 
@@ -154,6 +161,11 @@ void CommsTask() {
        Stats stats = Stats_init_default;
        stats.drive_angle = angles[0];
        stats.stear_angle = angles[1];
+       stats.batt_voltage = vesc1.mc_values_.v_in;
+       stats.speed1 = vesc1.mc_values_.erpm_smoothed;
+       stats.speed2 = vesc2.mc_values_.erpm_smoothed;
+       stats.esc_temp = std::max(vesc1.mc_values_.temp_mos_filtered, vesc2.mc_values_.temp_mos_filtered);
+       stats.pad_pressure1 = rxVals[0];
 
        int16_t data_len =
            saveProtoToBuffer(scratch, sizeof(scratch), Stats_fields, &stats);
@@ -175,13 +187,24 @@ void CommsTask() {
        break;
     }
 
-    osDelay(2);
+    if (vesc1.update() == (int)VescComm::COMM_PACKET_ID::COMM_GET_VALUES) {
+      vesc1.mc_values_.erpm_smoothed = erpm_lpf1.compute(vesc1.mc_values_.rpm);
+    }
+
+    if (vesc2.update() == (int)VescComm::COMM_PACKET_ID::COMM_GET_VALUES) {
+      vesc2.mc_values_.erpm_smoothed = erpm_lpf2.compute(vesc2.mc_values_.rpm);
+    }
+
+    osThreadYield();
   }
 }
 
 
 
 void MainTask() {
+  motor1_comm.Init(&huart1);
+  motor2_comm.Init(&huart2);
+
   TIM11->CR1 |= TIM_CR1_CEN;
 
   cfg = Config_init_default;
@@ -224,16 +247,11 @@ void MainTask() {
 //  yaw_pid_settings.I = 0;
   PidController yaw_pid(&cfg.yaw_pid);
 
-  motor1_comm.Init(&huart1);
-  motor2_comm.Init(&huart2);
-
-  VescComm vesc1(&motor1_comm);
-  VescComm vesc2(&motor2_comm);
-
   bool init_complete = false;
   uint8_t raw_data[14] = { 0 };
 
   static bool running = false;
+  int cnt = 0;
   for (;;) {
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
     osDelay(1);
@@ -275,7 +293,14 @@ void MainTask() {
 
     const float balance_angle = angles[0];
     const float balance_target = fwd_in_lpf.compute(scaleRxInput(fwd_med.compute(rxVals[1])) * cfg.balance_settings.max_control_angle);
-    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[3])) * cfg.balance_settings.max_rotation_rate);
+
+    const float speed = vesc1.mc_values_.erpm_smoothed + vesc2.mc_values_.erpm_smoothed;
+
+    float speed_coef = speed * cfg.balance_settings.speed_tilt_yaw_mult;
+    speed_coef = constrain(speed_coef, -1, 1);
+    const float tilt_yaw_mix = angles[1] * cfg.balance_settings.roll_yaw_mix * speed_coef;
+
+    const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[3])) * cfg.balance_settings.max_rotation_rate + tilt_yaw_mix);
 
     init_complete = init_complete || millis() > 2000;
     if (running) {
@@ -303,12 +328,21 @@ void MainTask() {
       vesc1.setCurrentBrake(5);
       vesc2.setCurrentBrake(5);
     }
+
+    if (cnt++ >= 10) {
+      while (huart1.gState != HAL_UART_STATE_READY);
+      vesc1.requestStats();
+
+      while (huart2.gState != HAL_UART_STATE_READY);
+      vesc2.requestStats();
+      cnt = 0;
+    }
   }
 }
 
 EXTERNC void RcPinInterrupt() {
-  if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0)) {
+//  if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0)) {
     on_ppm_interrupt();
-  }
+//  }
 
 }
