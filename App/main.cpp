@@ -89,7 +89,7 @@ VescComm vesc2(&motor2_comm);
 
 Usart config_comm;
 
-#define MID 1520
+#define MID 1470
 
 float scaleRxInput(int16_t input) {
   return constrain((input - MID) / 400.0, -1, 1);
@@ -111,7 +111,7 @@ Config cfg;
 LPF fwd_in_lpf(&cfg.balance_settings.rc_lpf);
 LPF yaw_in_lpf(&cfg.balance_settings.rc_lpf);
 
-float erpm_rc = 0.1;
+float erpm_rc = 0.2;
 LPF erpm_lpf1(&erpm_rc);
 LPF erpm_lpf2(&erpm_rc);
 
@@ -199,7 +199,11 @@ void CommsTask() {
   }
 }
 
-
+enum class BoardMode {
+  Direct = 0,
+  Balance = 1,
+  Idle = 2
+};
 
 void MainTask() {
   motor1_comm.Init(&huart1);
@@ -235,22 +239,20 @@ void MainTask() {
 
   Madgwick mw(&cfg.balance_settings.imu_beta);
 
-//  balance_pid_settings.P = 8;
-//  balance_pid_settings.D = 0.3;
-//  balance_pid_settings.I = 0.0005;
-//  balance_pid_settings.MaxI = 2000;
-
   PidController balance_pid(&cfg.balance_pid);
-
-//  yaw_pid_settings.P = 0.05;
-//  yaw_pid_settings.D = 0.0;
-//  yaw_pid_settings.I = 0;
   PidController yaw_pid(&cfg.yaw_pid);
 
   bool init_complete = false;
   uint8_t raw_data[14] = { 0 };
 
   static bool running = false;
+
+  static BoardMode mode = BoardMode::Direct;
+
+  float prev_cmd = 0;
+
+  const float cmd_change_rate = 0.003;
+
   int cnt = 0;
   for (;;) {
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
@@ -292,7 +294,7 @@ void MainTask() {
     angles[1] = -mw.getPitch();
 
     const float balance_angle = angles[0];
-    const float balance_target = fwd_in_lpf.compute(scaleRxInput(fwd_med.compute(rxVals[1])) * cfg.balance_settings.max_control_angle);
+    const float balance_target = 0;
 
     const float speed = vesc1.mc_values_.erpm_smoothed + vesc2.mc_values_.erpm_smoothed;
 
@@ -302,32 +304,60 @@ void MainTask() {
 
     const float yaw_target = yaw_in_lpf.compute(scaleRxInput(yaw_med.compute(rxVals[3])) * cfg.balance_settings.max_rotation_rate + tilt_yaw_mix);
 
+    const float kDeadband = 0.04;
+    float new_cmd = scaleRxInput(fwd_med.compute(rxVals[0])) * -1;
+    if (fabs(new_cmd) < kDeadband)
+      new_cmd = 0;
+
+    float cmd = prev_cmd + constrain(new_cmd - prev_cmd, -cmd_change_rate, cmd_change_rate);
+    prev_cmd = cmd;
+
     init_complete = init_complete || millis() > 2000;
     if (running) {
-      if (fabs(balance_angle) > cfg.balance_settings.stop_balance_angle)
+      if (fabs(balance_angle) > cfg.balance_settings.stop_balance_angle || fabs(cmd) < 0.2)
         running = false;
     }
     else {
-      if (fabs(balance_angle) < 5 && init_complete) {
+      if (fabs(balance_angle) < 5 && init_complete && fabs(cmd) > 0.2) {
         running = true;
       }
     }
-    if (running) {
-      float out = balance_pid.compute(balance_target - balance_angle, -gyro[0] * MW_GYRO_SCALE);
 
-      out = constrain(out, -cfg.balance_settings.max_current, cfg.balance_settings.max_current);
+//    if (mode == BoardMode::Direct) {
+//
+//    } else if (mode == BoardMode::Balance) {
+      if (running) {
+        float out = balance_pid.compute(balance_target - balance_angle, -gyro[0] * MW_GYRO_SCALE);
 
-      float yaw_out = yaw_pid.compute(yaw_lpf.compute(-gyro[2] * MW_GYRO_SCALE) - yaw_target);
+        out = constrain(out, -cfg.balance_settings.max_current, cfg.balance_settings.max_current);
 
-      vesc1.setCurrent(out + yaw_out);
-      vesc2.setCurrent(out - yaw_out);
-    } else {
-      balance_pid.reset();
-      yaw_pid.reset();
+        float yaw_out = yaw_pid.compute(yaw_lpf.compute(-gyro[2] * MW_GYRO_SCALE) - yaw_target);
 
-      vesc1.setCurrentBrake(5);
-      vesc2.setCurrentBrake(5);
-    }
+        vesc1.setCurrent(out + yaw_out);
+        vesc2.setCurrent(out - yaw_out);
+      } else {
+        balance_pid.reset();
+        yaw_pid.reset();
+
+//        vesc1.setCurrentBrake(5);
+//        vesc2.setCurrentBrake(5);
+
+        if (cmd == 0) {
+          vesc1.setCurrent(0);
+          vesc2.setCurrent(0);
+        } else if (cmd < 0) {
+          float current = fabs(cmd) * cfg.balance_settings.max_current;
+          vesc1.setCurrentBrake(current);
+          vesc2.setCurrentBrake(current);
+        }
+        else {
+          float current = cmd * cfg.balance_settings.max_current;
+          vesc1.setCurrent(current);
+          vesc2.setCurrent(current);
+        }
+      }
+    //}
+
 
     if (cnt++ >= 10) {
       while (huart1.gState != HAL_UART_STATE_READY);

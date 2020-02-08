@@ -1,7 +1,7 @@
 #pragma once
 
 
-#define MedianFilterLen 15
+#define MedianFilterLen 9
 class MedianFilter
 {
 public:
