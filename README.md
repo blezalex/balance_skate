@@ -54,7 +54,7 @@ APP: USART
 
 ## Flashing
 Use [STLINK V2](https://www.ebay.com/sch/i.html?_from=R40&_trksid=p2380057.m570.l1311.R1.TR11.TRC1.A0.H0.Xstlink.TRS0&_nkw=st-link+v2&_sacat=0)
-Use the file attached in releases [hex](https://github.com/blezalex/balance_skate/releases/download/1/skate.hex) and upload it via [STM32CubeProg](https://www.st.com/en/development-tools/stm32cubeprog.html)
+Use the file attached in releases [hex](https://github.com/blezalex/balance_skate/releases/download/alpha/skate.hex) and upload it via [STM32CubeProg](https://www.st.com/en/development-tools/stm32cubeprog.html)
 
 #### Connection
 * GND
@@ -62,7 +62,7 @@ Use the file attached in releases [hex](https://github.com/blezalex/balance_skat
 * SWCLK
 
 ## Configuing
-Use attached (releases) APP [apk](https://github.com/blezalex/balance_skate/releases/download/1/SkateConfig.apk). Here is my setting [file](https://github.com/blezalex/balance_skate/releases/download/alpha/skate.settings)
+Use attached (releases) APP [apk](https://github.com/blezalex/balance_skate/releases/download/alpha/SkateConfig.apk). Here is my setting [file](https://github.com/blezalex/balance_skate/releases/download/alpha/skate.settings)
 
 
 
